@@ -65,6 +65,28 @@ button.danger { background: transparent; color: var(--err); border: 1px solid va
 #status.err { color: var(--err); }
 #status { font-size: 0.85rem; }
 
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin: 14px 0 4px;
+  border-bottom: 1px solid #2a2e38;
+}
+.tab {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid #2a2e38;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+.tab .count { font-weight: normal; font-size: 0.72rem; opacity: 0.8; }
+.tab.active {
+  background: var(--card);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
 .entry {
   background: var(--card);
   border: 1px solid #2a2e38;

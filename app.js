@@ -10,6 +10,7 @@ const LANGS = ['es', 'en'];
 let config = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}') };
 const shas = {}; // lang -> sha del archivo (o null si no existe)
 const queues = {}; // lang -> entries[]
+let activeLang = localStorage.getItem('malaphor-tab') || 'es';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const esc = (s) =>
@@ -100,21 +101,23 @@ function render() {
     main.innerHTML = '<p class="hint">Pegá tu token de GitHub en Configuración para cargar la cola.</p>';
     return;
   }
-  main.innerHTML = '';
-  for (const lang of LANGS) {
+  // Barra de tabs (un idioma a la vez)
+  const tabs = LANGS.map((lang) => {
     const entries = queues[lang] || [];
     const unrev = entries.filter((e) => !e.reviewed).length;
-    const section = document.createElement('section');
-    section.innerHTML = `<h2>${lang.toUpperCase()} <small>${entries.length} en cola · ${unrev} sin revisar</small></h2>`;
-    if (!entries.length) {
-      const p = document.createElement('p');
-      p.className = 'hint';
-      p.textContent = 'Cola vacía (todavía no se generó nada).';
-      section.appendChild(p);
-    }
-    entries.forEach((e, pos) => section.appendChild(renderEntry(lang, e, pos)));
-    main.appendChild(section);
+    return `<button class="tab${lang === activeLang ? ' active' : ''}" data-tab="${lang}">
+      ${lang.toUpperCase()} <span class="count">${entries.length} · ${unrev} sin rev.</span>
+    </button>`;
+  }).join('');
+  main.innerHTML = `<div class="tabs">${tabs}</div><div id="entries"></div>`;
+
+  const cont = $('#entries');
+  const entries = queues[activeLang] || [];
+  if (!entries.length) {
+    cont.innerHTML = '<p class="hint">Cola vacía (todavía no se generó nada).</p>';
+    return;
   }
+  entries.forEach((e, pos) => cont.appendChild(renderEntry(activeLang, e, pos)));
 }
 
 function renderEntry(lang, e, pos) {
@@ -159,6 +162,14 @@ document.addEventListener('input', (ev) => {
   if (ev.target.classList.contains('custom')) {
     ev.target.closest('.opt').querySelector('input[type=radio]').checked = true;
   }
+});
+
+document.addEventListener('click', (ev) => {
+  const tab = ev.target.closest('.tab');
+  if (!tab) return;
+  activeLang = tab.dataset.tab;
+  localStorage.setItem('malaphor-tab', activeLang);
+  render();
 });
 
 document.addEventListener('click', async (ev) => {
