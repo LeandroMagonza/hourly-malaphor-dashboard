@@ -15,6 +15,9 @@ Por cada entrada de la cola (cada una con sus candidatos y el pick del juez):
 - **Elegir otra opción** → seleccioná otro candidato y *Guardar*.
 - **Escribir la tuya** → tipeá en el campo de la opción propia y *Guardar*.
 - **Borrar la entrada** → *Borrar*.
+- **Tuitear ya** → *Enviar ahora* (guarda tu selección y dispara el workflow `send`
+  de Actions para esa entrada; el dashboard no postea directo porque no tiene las
+  credenciales de Twitter). Requiere que el token tenga también **Actions: Read and write**.
 
 El bot, a la hora en punto, tuitea la **primera** entrada de la cola con su opción
 seleccionada (la del juez si no la tocaste, o la tuya). *Guardar* marca la entrada
@@ -27,7 +30,8 @@ Necesitás un **fine-grained Personal Access Token** con acceso **solo al repo
 
 1. GitHub → Settings → Developer settings → **Fine-grained tokens** → *Generate new token*.
 2. *Resource owner*: tu usuario. *Repository access*: **Only select repositories** → `hourly-malaphor`.
-3. *Permissions* → Repository permissions → **Contents: Read and write**.
+3. *Permissions* → Repository permissions → **Contents: Read and write** y
+   **Actions: Read and write** (esto último para el botón *Enviar ahora*).
 4. Generá, copiá el token y pegalo en **Configuración** del dashboard.
 
 Como es de alcance mínimo (un repo, solo Contents), el riesgo es bajo. Podés

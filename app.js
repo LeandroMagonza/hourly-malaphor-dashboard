@@ -95,6 +95,70 @@ function selectedText(e) {
   return e.candidates[e.judgeIndex] ?? e.candidates[0] ?? '';
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Guarda la selección actual de la entrada (radio o texto propio) y la marca revisada.
+async function saveSelection(entryEl, lang, id) {
+  const checked = entryEl.querySelector('input[type=radio]:checked');
+  const index = Number(checked.dataset.index);
+  const customText = entryEl.querySelector('.custom').value.trim();
+  if (index === -1 && !customText) throw new Error('Escribí un texto para la opción propia.');
+  await mutate(
+    lang,
+    (entries) => {
+      const e = entries.find((x) => x.id === id);
+      if (!e) return false;
+      e.selectedIndex = index;
+      e.customText = index === -1 ? customText : null;
+      e.reviewed = true;
+    },
+    `dashboard: revisa #${id} (${lang})`
+  );
+}
+
+// --- disparar el workflow "send" (Actions) para una entrada puntual ---
+async function latestSendRun() {
+  const res = await api(`/repos/${config.owner}/${config.repo}/actions/workflows/send.yml/runs?per_page=1`);
+  if (!res.ok) return null;
+  return (await res.json()).workflow_runs?.[0] || null;
+}
+async function getRun(runId) {
+  const res = await api(`/repos/${config.owner}/${config.repo}/actions/runs/${runId}`);
+  return res.ok ? res.json() : null;
+}
+async function dispatchSend(lang, id) {
+  const res = await api(`/repos/${config.owner}/${config.repo}/actions/workflows/send.yml/dispatches`, {
+    method: 'POST',
+    body: JSON.stringify({ ref: config.branch, inputs: { lang, id: String(id) } }),
+  });
+  if (res.status === 204) return;
+  if (res.status === 403)
+    throw new Error('El token necesita permiso "Actions: Read and write" (editá el PAT y recargá).');
+  throw new Error(`dispatch: ${res.status} — ${(await res.text()).slice(0, 160)}`);
+}
+async function runSend(lang, id) {
+  const before = await latestSendRun();
+  await dispatchSend(lang, id);
+  setStatus(`Disparando envío de #${id} (${lang})…`);
+  let run = null;
+  for (let i = 0; i < 20 && !run; i++) {
+    await sleep(3000);
+    const r = await latestSendRun();
+    if (r && (!before || r.id !== before.id)) run = r;
+  }
+  if (!run) {
+    setStatus('Envío disparado. Revisá Actions y recargá en un momento.', 'ok');
+    return;
+  }
+  for (let i = 0; i < 40 && run.status !== 'completed'; i++) {
+    await sleep(3000);
+    run = (await getRun(run.id)) || run;
+  }
+  await reload();
+  if (run.conclusion === 'success') setStatus(`✓ Tuiteada #${id} (${lang}).`, 'ok');
+  else setStatus(`El envío de #${id} terminó en "${run.conclusion || run.status}". Revisá Actions.`, 'err');
+}
+
 function render() {
   const main = $('#queues');
   if (!config.token) {
@@ -153,6 +217,7 @@ function renderEntry(lang, e, pos) {
     </div>
     <div class="actions">
       <button data-action="save">Guardar</button>
+      <button data-action="send" class="send">Enviar ahora</button>
       <button data-action="delete" class="danger">Borrar</button>
     </div>`;
   return div;
@@ -196,29 +261,19 @@ document.addEventListener('click', async (ev) => {
         `dashboard: borra #${id} (${lang})`
       );
       setStatus(`Borrada #${id} (${lang}).`, 'ok');
+      render();
     } else if (action === 'save') {
-      const checked = entryEl.querySelector('input[type=radio]:checked');
-      const index = Number(checked.dataset.index);
-      const customText = entryEl.querySelector('.custom').value.trim();
-      if (index === -1 && !customText) {
-        setStatus('Escribí un texto para la opción propia.', 'err');
+      await saveSelection(entryEl, lang, id);
+      setStatus(`Guardada #${id} (${lang}).`, 'ok');
+      render();
+    } else if (action === 'send') {
+      if (!confirm(`¿Tuitear la entrada #${id} (${lang}) AHORA en la cuenta?`)) {
         btn.disabled = false;
         return;
       }
-      await mutate(
-        lang,
-        (entries) => {
-          const e = entries.find((x) => x.id === id);
-          if (!e) return false;
-          e.selectedIndex = index;
-          e.customText = index === -1 ? customText : null;
-          e.reviewed = true;
-        },
-        `dashboard: revisa #${id} (${lang})`
-      );
-      setStatus(`Guardada #${id} (${lang}).`, 'ok');
+      await saveSelection(entryEl, lang, id); // lo que ves es lo que se manda
+      await runSend(lang, id);
     }
-    render();
   } catch (e) {
     setStatus('Error: ' + e.message, 'err');
     btn.disabled = false;
