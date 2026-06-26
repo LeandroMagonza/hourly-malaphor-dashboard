@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hourly Malaphor — cola</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>🐦🔀 Hourly Malaphor — cola de revisión</h1>
+      <details id="settings-panel">
+        <summary>Configuración (repo + token)</summary>
+        <div class="grid">
+          <label>Owner <input id="owner" type="text" placeholder="LeandroMagonza" /></label>
+          <label>Repo <input id="repo" type="text" placeholder="hourly-malaphor" /></label>
+          <label>Branch <input id="branch" type="text" placeholder="main" /></label>
+          <label>Token (fine-grained PAT, Contents: read/write)
+            <input id="token" type="password" placeholder="github_pat_..." autocomplete="off" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="save-settings">Guardar configuración</button>
+          <span class="muted">El token queda solo en tu navegador (localStorage).</span>
+        </div>
+      </details>
+      <div class="row">
+        <button id="reload">↻ Recargar cola</button>
+        <span id="status"></span>
+      </div>
+    </header>
+    <main id="queues"></main>
+    <script src="app.js"></script>
+  </body>
+</html>

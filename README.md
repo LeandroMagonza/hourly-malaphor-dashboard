@@ -1,0 +1,39 @@
+# Hourly Malaphor — Dashboard
+
+Dashboard estático (GitHub Pages) para revisar la **cola** del bot
+[hourly-malaphor](https://github.com/LeandroMagonza/hourly-malaphor) (repo privado).
+
+No tiene backend: lee y escribe la cola directamente con la **GitHub API**, usando
+un **token tuyo** que pegás en la pantalla y queda guardado solo en tu navegador
+(`localStorage`, nunca se sube a ningún lado).
+
+## Qué podés hacer
+
+Por cada entrada de la cola (cada una con sus candidatos y el pick del juez):
+
+- **Dejar la del juez** → tocá *Guardar* sin cambiar nada.
+- **Elegir otra opción** → seleccioná otro candidato y *Guardar*.
+- **Escribir la tuya** → tipeá en el campo de la opción propia y *Guardar*.
+- **Borrar la entrada** → *Borrar*.
+
+El bot, a la hora en punto, tuitea la **primera** entrada de la cola con su opción
+seleccionada (la del juez si no la tocaste, o la tuya). *Guardar* marca la entrada
+como **revisada**.
+
+## Token
+
+Necesitás un **fine-grained Personal Access Token** con acceso **solo al repo
+`hourly-malaphor`** y permiso **Repository contents: Read and write**:
+
+1. GitHub → Settings → Developer settings → **Fine-grained tokens** → *Generate new token*.
+2. *Resource owner*: tu usuario. *Repository access*: **Only select repositories** → `hourly-malaphor`.
+3. *Permissions* → Repository permissions → **Contents: Read and write**.
+4. Generá, copiá el token y pegalo en **Configuración** del dashboard.
+
+Como es de alcance mínimo (un repo, solo Contents), el riesgo es bajo. Podés
+revocarlo cuando quieras.
+
+## Uso local
+
+Es estático: `index.html` + `app.js` + `style.css`. Abrilo con cualquier server
+estático o directamente desde GitHub Pages.
