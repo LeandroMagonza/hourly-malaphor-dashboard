@@ -101,7 +101,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function saveSelection(entryEl, lang, id) {
   const checked = entryEl.querySelector('input[type=radio]:checked');
   const index = Number(checked.dataset.index);
-  const customText = entryEl.querySelector('.custom').value.trim();
+  const customText = entryEl.querySelector('input.custom').value.trim();
   if (index === -1 && !customText) throw new Error('Escribí un texto para la opción propia.');
   await mutate(
     lang,
