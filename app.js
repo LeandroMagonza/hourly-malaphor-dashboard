@@ -24,6 +24,20 @@ function setStatus(msg, kind = '') {
   el.className = kind;
 }
 
+const short = (s) => (s ? String(s).slice(0, 7) : '—');
+
+// Log visible en la página (y en la consola). Ante error/warn abre el panel solo.
+function logLine(msg, kind = '') {
+  const el = $('#log');
+  const t = new Date().toLocaleTimeString();
+  if (el) {
+    el.textContent += (el.textContent ? '\n' : '') + `[${t}] ${msg}`;
+    el.scrollTop = el.scrollHeight;
+    if (kind === 'err' || kind === 'warn') $('#log-panel')?.setAttribute('open', '');
+  }
+  (kind === 'err' ? console.error : kind === 'warn' ? console.warn : console.log)('[malaphor] ' + msg);
+}
+
 async function api(path, opts = {}) {
   return fetch('https://api.github.com' + path, {
     ...opts,
@@ -41,12 +55,18 @@ async function getQueue(lang) {
   const res = await api(`/repos/${config.owner}/${config.repo}/contents/queue/${lang}.json?ref=${ref}`);
   if (res.status === 404) {
     shas[lang] = null;
+    logLine(`GET ${lang}: 404 (la cola no existe todavía)`, 'warn');
     return [];
   }
-  if (!res.ok) throw new Error(`GET ${lang}: ${res.status} — ${(await res.text()).slice(0, 160)}`);
+  if (!res.ok) {
+    const body = (await res.text()).slice(0, 160);
+    logLine(`GET ${lang}: ${res.status} — ${body}`, 'err');
+    throw new Error(`GET ${lang}: ${res.status} — ${body}`);
+  }
   const data = await res.json();
   shas[lang] = data.sha;
   const arr = JSON.parse(b64dec(data.content));
+  logLine(`GET ${lang}: 200 · ${Array.isArray(arr) ? arr.length : 0} entradas · sha ${short(data.sha)}`);
   return Array.isArray(arr) ? arr : [];
 }
 
@@ -57,23 +77,42 @@ async function putQueue(lang, entries, message) {
     branch: config.branch,
   };
   if (shas[lang]) body.sha = shas[lang];
+  logLine(`PUT ${lang}: subiendo ${entries.length} entradas (base sha ${short(shas[lang])})`);
   const res = await api(`/repos/${config.owner}/${config.repo}/contents/queue/${lang}.json`, {
     method: 'PUT',
     body: JSON.stringify(body),
   });
-  if (res.status === 409 || res.status === 422) throw new Error('conflict');
-  if (!res.ok) throw new Error(`PUT ${lang}: ${res.status} — ${(await res.text()).slice(0, 160)}`);
+  if (res.status === 409 || res.status === 422) {
+    logLine(`PUT ${lang}: ${res.status} conflicto — el archivo cambió en el server`, 'warn');
+    throw new Error('conflict');
+  }
+  if (!res.ok) {
+    const b = (await res.text()).slice(0, 160);
+    logLine(`PUT ${lang}: ${res.status} — ${b}`, 'err');
+    throw new Error(`PUT ${lang}: ${res.status} — ${b}`);
+  }
   const data = await res.json();
   shas[lang] = data.content.sha;
+  logLine(`PUT ${lang}: OK · commit ${short(data.commit?.sha)} · nuevo sha ${short(data.content.sha)}`);
 }
 
-// Read-modify-write: relee la versión más nueva, aplica el cambio por id y
-// reintenta si alguien (Actions u otra pestaña) escribió en el medio.
+const clone = (x) => JSON.parse(JSON.stringify(x));
+
+// Read-modify-write con concurrencia optimista.
+// Partimos de NUESTRA copia en memoria (que ya es la verdad después de cada
+// guardado propio) y del sha conocido; solo releemos de GitHub si hay un
+// conflicto REAL (Actions u otra pestaña escribió en el medio). Así dos
+// guardados seguidos NO dependen de que la API de contenidos de GitHub haya
+// propagado la escritura anterior (tarda unos segundos): eso era lo que hacía
+// fallar el 2.º guardado con "conflicto persistente" y podía pisar el 1.º.
 async function mutate(lang, mutator, message) {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const entries = await getQueue(lang);
+  logLine(`mutar ${lang}: ${message} (base: ${queues[lang] ? 'memoria' : 'server'})`);
+  let base = queues[lang] ? clone(queues[lang]) : await getQueue(lang);
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const entries = clone(base);
     if (mutator(entries) === false) {
       queues[lang] = entries;
+      logLine(`mutar ${lang}: sin cambios (entrada no encontrada)`, 'warn');
       return;
     }
     try {
@@ -81,8 +120,13 @@ async function mutate(lang, mutator, message) {
       queues[lang] = entries;
       return;
     } catch (e) {
-      if (e.message === 'conflict') continue;
-      throw e;
+      if (e.message !== 'conflict') throw e;
+      // Conflicto real: el archivo cambió en el server. Releemos lo último,
+      // reaplicamos el cambio por id y reintentamos (con una pequeña espera
+      // para darle tiempo a GitHub a propagar antes de volver a leer).
+      logLine(`mutar ${lang}: conflicto, reintento ${attempt + 1}/6 (releo del server)…`, 'warn');
+      await sleep(400 * (attempt + 1));
+      base = await getQueue(lang);
     }
   }
   throw new Error('Conflicto persistente al guardar. Recargá e intentá de nuevo.');
@@ -127,14 +171,22 @@ async function getRun(runId) {
   return res.ok ? res.json() : null;
 }
 async function dispatchSend(lang, id) {
+  logLine(`dispatch send.yml: lang=${lang} id=${id}`);
   const res = await api(`/repos/${config.owner}/${config.repo}/actions/workflows/send.yml/dispatches`, {
     method: 'POST',
     body: JSON.stringify({ ref: config.branch, inputs: { lang, id: String(id) } }),
   });
-  if (res.status === 204) return;
-  if (res.status === 403)
+  if (res.status === 204) {
+    logLine('dispatch: 204 OK (workflow disparado)');
+    return;
+  }
+  if (res.status === 403) {
+    logLine('dispatch: 403 — el token no tiene "Actions: Read and write"', 'err');
     throw new Error('El token necesita permiso "Actions: Read and write" (editá el PAT y recargá).');
-  throw new Error(`dispatch: ${res.status} — ${(await res.text()).slice(0, 160)}`);
+  }
+  const b = (await res.text()).slice(0, 160);
+  logLine(`dispatch: ${res.status} — ${b}`, 'err');
+  throw new Error(`dispatch: ${res.status} — ${b}`);
 }
 async function runSend(lang, id) {
   const before = await latestSendRun();
@@ -155,8 +207,13 @@ async function runSend(lang, id) {
     run = (await getRun(run.id)) || run;
   }
   await reload();
-  if (run.conclusion === 'success') setStatus(`✓ Tuiteada #${id} (${lang}).`, 'ok');
-  else setStatus(`El envío de #${id} terminó en "${run.conclusion || run.status}". Revisá Actions.`, 'err');
+  if (run.conclusion === 'success') {
+    logLine(`send #${id} (${lang}): success ✓`);
+    setStatus(`✓ Tuiteada #${id} (${lang}).`, 'ok');
+  } else {
+    logLine(`send #${id} (${lang}): ${run.conclusion || run.status} — mirá el run ${run.id} en Actions`, 'err');
+    setStatus(`El envío de #${id} terminó en "${run.conclusion || run.status}". Revisá Actions.`, 'err');
+  }
 }
 
 function render() {
@@ -223,6 +280,25 @@ function renderEntry(lang, e, pos) {
   return div;
 }
 
+// Actualiza en el DOM solo la entrada tocada, sin reconstruir toda la lista
+// (así no se borra el texto que estés escribiendo en OTRAS entradas).
+function refreshEntry(entryEl, lang, id) {
+  const entries = queues[lang] || [];
+  const pos = entries.findIndex((e) => e.id === id);
+  if (pos === -1) entryEl.remove();
+  else entryEl.replaceWith(renderEntry(lang, entries[pos], pos));
+  refreshTabCounts();
+}
+
+function refreshTabCounts() {
+  document.querySelectorAll('.tab').forEach((tabEl) => {
+    const entries = queues[tabEl.dataset.tab] || [];
+    const unrev = entries.filter((e) => !e.reviewed).length;
+    const c = tabEl.querySelector('.count');
+    if (c) c.textContent = `${entries.length} · ${unrev} sin rev.`;
+  });
+}
+
 document.addEventListener('input', (ev) => {
   if (ev.target.classList.contains('custom')) {
     ev.target.closest('.opt').querySelector('input[type=radio]').checked = true;
@@ -265,7 +341,7 @@ document.addEventListener('click', async (ev) => {
     } else if (action === 'save') {
       await saveSelection(entryEl, lang, id);
       setStatus(`Guardada #${id} (${lang}).`, 'ok');
-      render();
+      refreshEntry(entryEl, lang, id);
     } else if (action === 'send') {
       if (!confirm(`¿Tuitear la entrada #${id} (${lang}) AHORA en la cuenta?`)) {
         btn.disabled = false;
@@ -275,6 +351,7 @@ document.addEventListener('click', async (ev) => {
       await runSend(lang, id);
     }
   } catch (e) {
+    logLine(`acción "${action}" #${id} (${lang}): ${e.message}`, 'err');
     setStatus('Error: ' + e.message, 'err');
     btn.disabled = false;
   }
@@ -297,6 +374,9 @@ function bindSettings() {
     reload();
   });
   $('#reload').addEventListener('click', reload);
+  $('#clear-log').addEventListener('click', () => {
+    $('#log').textContent = '';
+  });
 }
 
 async function reload() {

@@ -62,9 +62,28 @@ button:hover { filter: brightness(1.08); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.danger { background: transparent; color: var(--err); border: 1px solid var(--err); }
 button.send { background: var(--ok); color: #06210f; }
+button.ghost { background: transparent; color: var(--muted); border: 1px solid #333a46; }
 #status.ok { color: var(--ok); }
 #status.err { color: var(--err); }
 #status { font-size: 0.85rem; }
+
+#log-panel { margin-top: 8px; }
+#log-panel > summary { font-size: 0.8rem; color: var(--muted); cursor: pointer; }
+#log {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  max-height: 180px;
+  overflow: auto;
+  background: #0b0d11;
+  border: 1px solid #2a2e38;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #b9c0cc;
+}
 
 .tabs {
   display: flex;

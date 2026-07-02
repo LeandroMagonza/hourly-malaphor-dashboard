@@ -28,6 +28,14 @@
         <button id="reload">↻ Recargar cola</button>
         <span id="status"></span>
       </div>
+      <details id="log-panel">
+        <summary>Log <span class="muted">(qué pasó en cada operación)</span></summary>
+        <div class="row">
+          <button id="clear-log" class="ghost">Limpiar</button>
+          <span class="muted">Se copia también a la consola del navegador (F12).</span>
+        </div>
+        <pre id="log" aria-live="polite"></pre>
+      </details>
     </header>
     <main id="queues"></main>
     <script src="app.js"></script>
